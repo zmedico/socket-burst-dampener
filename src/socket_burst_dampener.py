@@ -70,6 +70,7 @@ def main_loop(args):
                         # is still running. So that's why we call proc.poll()
                         # here.
                         if event & select.EPOLLHUP and proc.poll() is not None:
+                            epoll.unregister(fd)
                             proc.wait()
                             proc.stderr.close()
                             try:
