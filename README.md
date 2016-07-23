@@ -15,7 +15,8 @@ daemon command that works with inetd.
 ## Usage
 ```
 usage: socket-burst-dampener [-h] [--address ADDRESS] [--backlog BACKLOG]
-                             [--processes PROCESSES] [-v]
+                             [--load-average LOAD] [--processes PROCESSES]
+                             [-v]
                              PORT CMD [ARG [ARG ...]]
 
   socket-burst-dampener
@@ -31,6 +32,8 @@ optional arguments:
   --address ADDRESS     bind to the specified address
   --backlog BACKLOG     maximum number of queued connections (default from
                         net.core.somaxconn sysctl is 128)
+  --load-average LOAD   don't accept multiple connections unless load is below
+                        LOAD
   --processes PROCESSES
                         maximum number of concurrent processes (default is 1)
   -v, --verbose         verbose logging (each occurence increases verbosity)

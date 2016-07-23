@@ -28,6 +28,9 @@ def main_loop(args):
 
     processes = {}
 
+    load_ok = lambda: (args.load_average is None or
+        not processes or os.getloadavg()[0] < args.load_average)
+
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -42,6 +45,11 @@ def main_loop(args):
                     if fd == s.fileno():
                         if not accepting:
                             continue
+                        if not load_ok():
+                            accepting = False
+                            epoll.unregister(fd)
+                            continue
+
                         conn, addr = s.accept()
                         proc = subprocess.Popen(cmd,
                             stdin=conn.fileno(), stdout=conn.fileno(),
@@ -79,7 +87,7 @@ def main_loop(args):
                                 pass
                             conn.close()
                             del processes[fd]
-                            if not accepting:
+                            if not accepting and load_ok():
                                 epoll.register(s.fileno(), select.EPOLLIN)
                                 accepting = True
 
@@ -128,6 +136,15 @@ def main():
         help=('maximum number of queued connections '
             '(default from net.core.somaxconn '
             'sysctl is {})'.format(socket.SOMAXCONN)),
+    )
+
+    parser.add_argument(
+        '--load-average',
+        action='store',
+        metavar='LOAD',
+        type=float,
+        default=None,
+        help='don\'t accept multiple connections unless load is below LOAD',
     )
 
     parser.add_argument(
