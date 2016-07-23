@@ -1,13 +1,14 @@
 
 import argparse
+import asyncio
 import fcntl
+import functools
 import logging
 import os
-import select
+import signal
 import socket
 import subprocess
 import sys
-
 
 __version__ = "HEAD"
 __project__ = "socket-burst-dampener"
@@ -23,85 +24,89 @@ def set_nonblock(fd):
         fcntl.fcntl(fd, fcntl.F_GETFL) | os.O_NONBLOCK)
 
 
-def main_loop(args):
-    cmd = [args.cmd] + args.args
+class Daemon:
+    def __init__(self, args, loop):
+        self._args = args
+        self._loop = loop
+        self._processes = {}
+        self._accepting = False
+        self._socket = None
+        self._sigchld_handler = functools.partial(
+            loop.call_soon_threadsafe, self._reap_children)
 
-    processes = {}
+    def _acceptable_load(self):
+        return (self._args.load_average is None or
+            not self._processes or
+            os.getloadavg()[0] < self._args.load_average)
 
-    load_ok = lambda: (args.load_average is None or
-        not processes or os.getloadavg()[0] < args.load_average)
+    def _start_accepting(self):
+        self._accepting = True
+        self._loop.add_reader(self._socket.fileno(),
+            self._socket_read_handler)
 
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            s.bind((args.address, args.port))
-            s.listen(args.backlog)
-            epoll = select.epoll()
-            set_nonblock(s.fileno())
-            epoll.register(s.fileno(), select.EPOLLIN)
-            accepting = True
-            while True:
-                for fd, event in epoll.poll(-1):
-                    if fd == s.fileno():
-                        if not accepting:
-                            continue
-                        if not load_ok():
-                            accepting = False
-                            epoll.unregister(fd)
-                            continue
+    def _stop_accepting(self):
+        if self._accepting:
+            self._accepting = False
+            self._loop.remove_reader(self._socket.fileno())
 
-                        conn, addr = s.accept()
-                        proc = subprocess.Popen(cmd,
-                            stdin=conn.fileno(), stdout=conn.fileno(),
-                            stderr=subprocess.PIPE)
-                        set_nonblock(proc.stderr.fileno())
-                        # we use stderr EPOLLHUP to detect process exit
-                        epoll.register(proc.stderr.fileno(), select.EPOLLIN|select.EPOLLHUP)
-                        processes[proc.stderr.fileno()] = (proc, conn)
-                        if len(processes) == args.processes:
-                            accepting = False
-                            epoll.unregister(fd)
+    def _reap_children(self):
+        while True:
+            try:
+                pid = os.wait3(os.WNOHANG)[0]
+            except ChildProcessError:
+                break
 
-                    elif fd in processes:
-                        proc, conn = processes[fd]
-                        while True:
-                            stderr = proc.stderr.read()
-                            if stderr:
-                                sys.stderr.buffer.write(stderr)
-                            else:
-                                break
+            if pid == 0:
+                break
 
-                        sys.stderr.buffer.flush()
-
-                        # NOTE: If I SIGSTOP a client rsync process, I see
-                        # an EPOLLHUP here even though the server process
-                        # is still running. So that's why we call proc.poll()
-                        # here.
-                        if event & select.EPOLLHUP and proc.poll() is not None:
-                            epoll.unregister(fd)
-                            proc.wait()
-                            proc.stderr.close()
-                            try:
-                                conn.shutdown(socket.SHUT_RDWR)
-                            except OSError:
-                                pass
-                            conn.close()
-                            del processes[fd]
-                            if not accepting and load_ok():
-                                epoll.register(s.fileno(), select.EPOLLIN)
-                                accepting = True
-
-    finally:
-        while processes:
-            fd, (proc, conn) = processes.popitem()
-            proc.terminate()
-            proc.wait()
-            proc.stderr.close()
+            proc, conn = self._processes.pop(pid)
             try:
                 conn.shutdown(socket.SHUT_RDWR)
             except OSError:
                 pass
             conn.close()
+
+            if not self._accepting and self._acceptable_load():
+                self._start_accepting()
+
+    def _socket_read_handler(self):
+        if self._accepting:
+            if self._acceptable_load():
+                conn, addr = self._socket.accept()
+                proc = subprocess.Popen([self._args.cmd] + self._args.args,
+                    stdin=conn.fileno(), stdout=conn.fileno())
+                self._processes[proc.pid] = (proc, conn)
+                if len(self._processes) == self._args.processes:
+                    self._stop_accepting()
+            else:
+                self._stop_accepting()
+
+    def __enter__(self):
+        self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self._socket.bind((self._args.address, self._args.port))
+        self._socket.listen(self._args.backlog)
+        set_nonblock(self._socket.fileno())
+        self._loop.add_signal_handler(signal.SIGCHLD, self._sigchld_handler)
+        self._start_accepting()
+        return self
+
+    def __exit__(self, exc_type, exc_value, exc_traceback):
+        self._stop_accepting()
+        self._socket.close()
+        self._loop.remove_signal_handler(signal.SIGCHLD)
+
+        while self._processes:
+            pid, (proc, conn) = self._processes.popitem()
+            proc.terminate()
+            proc.wait()
+            try:
+                conn.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+            conn.close()
+
+        return False
 
 
 def main():
@@ -186,8 +191,15 @@ def main():
 
     logging.debug('args: %s', args)
 
-    main_loop(args)
+    loop = asyncio.get_event_loop()
 
+    try:
+        with Daemon(args, loop):
+            loop.run_forever()
+    except KeyboardInterrupt:
+        loop.stop()
+    finally:
+        loop.close()
 
 if __name__ == '__main__':
     sys.exit(main())
