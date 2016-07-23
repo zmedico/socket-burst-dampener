@@ -41,5 +41,5 @@ optional arguments:
 ```
 ## Example with rsync
 ```
-socket-burst-dampener 873 --processes $(nproc) -- rsync --daemon
+socket-burst-dampener 873 --processes $(nproc) --load-average $(nproc) -- rsync --daemon
 ```
