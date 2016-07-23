@@ -158,7 +158,7 @@ def main():
         metavar='PROCESSES',
         type=int,
         default=1,
-        help='maximum number of concurrent processes (default is 1)',
+        help='maximum number of concurrent processes (0 means infinite, default is 1)',
     )
 
     parser.add_argument(

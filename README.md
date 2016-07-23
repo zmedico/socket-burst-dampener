@@ -35,7 +35,8 @@ optional arguments:
   --load-average LOAD   don't accept multiple connections unless load is below
                         LOAD
   --processes PROCESSES
-                        maximum number of concurrent processes (default is 1)
+                        maximum number of concurrent processes (0 means
+                        infinite, default is 1)
   -v, --verbose         verbose logging (each occurence increases verbosity)
 ```
 ## Example with rsync
