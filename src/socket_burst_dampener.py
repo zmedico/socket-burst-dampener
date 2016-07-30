@@ -30,7 +30,7 @@ class Daemon:
         self._loop = loop
         self._processes = {}
         self._accepting = False
-        self._socket = None
+        self._sockets = None
         self._sigchld_handler = functools.partial(
             loop.call_soon_threadsafe, self._reap_children)
 
@@ -41,13 +41,15 @@ class Daemon:
 
     def _start_accepting(self):
         self._accepting = True
-        self._loop.add_reader(self._socket.fileno(),
-            self._socket_read_handler)
+        for sock in self._sockets:
+            self._loop.add_reader(sock.fileno(),
+                functools.partial(self._socket_read_handler, sock))
 
     def _stop_accepting(self):
         if self._accepting:
             self._accepting = False
-            self._loop.remove_reader(self._socket.fileno())
+            for sock in self._sockets:
+                self._loop.remove_reader(sock.fileno())
 
     def _reap_children(self):
         while True:
@@ -69,10 +71,10 @@ class Daemon:
             if not self._accepting and self._acceptable_load():
                 self._start_accepting()
 
-    def _socket_read_handler(self):
+    def _socket_read_handler(self, sock):
         if self._accepting:
             if self._acceptable_load():
-                conn, addr = self._socket.accept()
+                conn, addr = sock.accept()
                 proc = subprocess.Popen([self._args.cmd] + self._args.args,
                     stdin=conn.fileno(), stdout=conn.fileno())
                 self._processes[proc.pid] = (proc, conn)
@@ -81,19 +83,68 @@ class Daemon:
             else:
                 self._stop_accepting()
 
+    def _init_sockets(self):
+        self._sockets = sockets = []
+
+        af_hint = 0
+        if self._args.ipv4 and self._args.ipv6:
+            pass
+        elif self._args.ipv6 and socket.has_ipv6:
+            af_hint = socket.AF_INET6
+        elif self._args.ipv4:
+            af_hint = socket.AF_INET
+
+        for addrinfo in socket.getaddrinfo(
+            self._args.address, self._args.port,
+            family=af_hint, type=socket.SOCK_STREAM,
+            proto=socket.IPPROTO_TCP, flags=socket.AI_PASSIVE):
+
+            # Validate structures returned from getaddrinfo(),
+            # since they may be corrupt (especially if python
+            # has IPv6 support disabled).
+            if len(addrinfo) != 5:
+                continue
+            family, sock_type, proto, canonname, sockaddr = addrinfo
+            if len(sockaddr) < 2:
+                continue
+            if not isinstance(sockaddr[0], str):
+                continue
+
+            sock = None
+            try:
+                logging.debug('family=%s type=%s proto=%s addr=%s',
+                    family, sock_type, proto, sockaddr)
+                sock = socket.socket(
+                    family=family, type=sock_type, proto=proto)
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                if (hasattr(socket, 'AF_INET6') and
+                    hasattr(socket, 'IPV6_V6ONLY') and
+                    family == socket.AF_INET6):
+                    # Avoid EADDRINUSE with dual ipv4/ipv6 stack.
+                    sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
+                sock.bind(sockaddr)
+                sock.listen(self._args.backlog)
+                set_nonblock(sock.fileno())
+            except Exception as e:
+                logging.exception(e)
+                if sock is not None:
+                    sock.close()
+                continue
+            sockets.append(sock)
+
+        if not sockets:
+            raise AssertionError('could not bind socket(s)')
+
     def __enter__(self):
-        self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self._socket.bind((self._args.address, self._args.port))
-        self._socket.listen(self._args.backlog)
-        set_nonblock(self._socket.fileno())
+        self._init_sockets()
         self._loop.add_signal_handler(signal.SIGCHLD, self._sigchld_handler)
         self._start_accepting()
         return self
 
     def __exit__(self, exc_type, exc_value, exc_traceback):
         self._stop_accepting()
-        self._socket.close()
+        while self._sockets:
+            self._sockets.pop().close()
         self._loop.remove_signal_handler(signal.SIGCHLD)
 
         while self._processes:
@@ -128,7 +179,7 @@ def main():
         '--address',
         action='store',
         metavar='ADDRESS',
-        default='',
+        default=None,
         help='bind to the specified address',
     )
 
@@ -141,6 +192,20 @@ def main():
         help=('maximum number of queued connections '
             '(default from net.core.somaxconn '
             'sysctl is {})'.format(socket.SOMAXCONN)),
+    )
+
+    parser.add_argument(
+        '--ipv4',
+        action='store_true',
+        default=None,
+        help='prefer IPv4',
+    )
+
+    parser.add_argument(
+        '--ipv6',
+        action='store_true',
+        default=None,
+        help='prefer IPv6',
     )
 
     parser.add_argument(
@@ -190,6 +255,9 @@ def main():
     )
 
     logging.debug('args: %s', args)
+
+    if args.ipv6 and not socket.has_ipv6:
+        logging.warning('the platform has IPv6 support disabled')
 
     loop = asyncio.get_event_loop()
 
