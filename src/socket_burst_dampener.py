@@ -74,12 +74,16 @@ class Daemon:
     def _socket_read_handler(self, sock):
         if self._accepting:
             if self._acceptable_load():
-                conn, addr = sock.accept()
-                proc = subprocess.Popen([self._args.cmd] + self._args.args,
-                    stdin=conn.fileno(), stdout=conn.fileno())
-                self._processes[proc.pid] = (proc, conn)
-                if len(self._processes) == self._args.processes:
-                    self._stop_accepting()
+                try:
+                    conn, addr = sock.accept()
+                except Exception as e:
+                    logging.debug('socket.accept: %s', e)
+                else:
+                    proc = subprocess.Popen([self._args.cmd] + self._args.args,
+                        stdin=conn.fileno(), stdout=conn.fileno())
+                    self._processes[proc.pid] = (proc, conn)
+                    if len(self._processes) == self._args.processes:
+                        self._stop_accepting()
             else:
                 self._stop_accepting()
 
