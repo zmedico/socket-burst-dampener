@@ -167,6 +167,12 @@ def main():
         description="  {} {}\n  {}".format(
         __project__, __version__, __description__))
 
+    try:
+        with open('/proc/sys/net/core/somaxconn', 'rt') as f:
+            max_backlog = int(f.readline().strip())
+    except Exception:
+        max_backlog = socket.SOMAXCONN
+
     parser.add_argument(
         'port',
         action='store',
@@ -188,10 +194,10 @@ def main():
         action='store',
         metavar='BACKLOG',
         type=int,
-        default=socket.SOMAXCONN,
+        default=max_backlog,
         help=('maximum number of queued connections '
             '(default from net.core.somaxconn '
-            'sysctl is {})'.format(socket.SOMAXCONN)),
+            'sysctl is {})'.format(max_backlog)),
     )
 
     parser.add_argument(
