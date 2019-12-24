@@ -54,7 +54,7 @@ class Daemon:
     def _reap_children(self):
         while True:
             try:
-                pid = os.wait3(os.WNOHANG)[0]
+                pid, wstatus, rusage = os.wait3(os.WNOHANG)
             except ChildProcessError:
                 break
 
@@ -67,6 +67,10 @@ class Daemon:
             except OSError:
                 pass
             conn.close()
+
+            # Suppress warning messages like this:
+            # ResourceWarning: subprocess 1234 is still running
+            proc.returncode = wstatus
 
             if not self._accepting and self._acceptable_load():
                 self._start_accepting()
