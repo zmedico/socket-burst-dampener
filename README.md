@@ -12,9 +12,11 @@ while taking care to ensure that too many processes are not spawned at
 once. The socket-burst-dampener daemon applies this behavior to any
 daemon command that works with inetd.
 
-Note that on Linux it may be useful to increase the maximum queue
-length for incomplete sockets that is controlled by the
-net.ipv4.tcp_max_syn_backlog sysctl setting (mentioned in the
+On Linux, the net.core.somaxconn sysctl setting specifies the queue
+length for completely established sockets waiting to be accepted.
+It may also be useful to adjust the maximum queue length for incomplete
+sockets that is controlled by the net.ipv4.tcp_max_syn_backlog sysctl
+setting (mentioned in the
 [listen(2)](http://man7.org/linux/man-pages/man2/listen.2.html) man page).
 
 ## Usage
