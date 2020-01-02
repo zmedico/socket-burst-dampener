@@ -61,12 +61,7 @@ class Daemon:
             if pid == 0:
                 break
 
-            proc, conn = self._processes.pop(pid)
-            try:
-                conn.shutdown(socket.SHUT_RDWR)
-            except OSError:
-                pass
-            conn.close()
+            proc = self._processes.pop(pid)
 
             # Suppress warning messages like this:
             # ResourceWarning: subprocess 1234 is still running
@@ -85,7 +80,10 @@ class Daemon:
                 else:
                     proc = subprocess.Popen([self._args.cmd] + self._args.args,
                         stdin=conn.fileno(), stdout=conn.fileno())
-                    self._processes[proc.pid] = (proc, conn)
+                    # Close the socket immediately, in order to conserve file
+                    # descriptors (the subprocess holds a duplicate).
+                    conn.close()
+                    self._processes[proc.pid] = proc
                     if len(self._processes) == self._args.processes:
                         self._stop_accepting()
             else:
@@ -182,14 +180,9 @@ class Daemon:
         self._loop.remove_signal_handler(signal.SIGCHLD)
 
         while self._processes:
-            pid, (proc, conn) = self._processes.popitem()
+            pid, proc = self._processes.popitem()
             proc.terminate()
             proc.wait()
-            try:
-                conn.shutdown(socket.SHUT_RDWR)
-            except OSError:
-                pass
-            conn.close()
 
         return False
 
