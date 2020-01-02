@@ -102,6 +102,8 @@ class Daemon:
         elif self._args.ipv4:
             af_hint = socket.AF_INET
 
+        addresses = []
+
         for addrinfo in socket.getaddrinfo(
             self._args.address, self._args.port,
             family=af_hint, type=socket.SOCK_STREAM,
@@ -118,6 +120,26 @@ class Daemon:
             if not isinstance(sockaddr[0], str):
                 continue
 
+            addresses.append(addrinfo)
+
+        # On Linux, if dual-stack support is enabled then we want to
+        # use the IPv6 address for IPv4 as well, since attempting to
+        # listen on both addresses separately results in EADDRINUSE.
+        if len(addresses) > 1 and socket.has_ipv6:
+            try:
+                with open('/proc/sys/net/ipv6/bindv6only', 'rb') as f:
+                    ipv6_bindv6only = b'0' not in f.readline()
+            except EnvironmentError:
+                ipv6_bindv6only = True
+
+            if not ipv6_bindv6only:
+                filtered_addresses = [addrinfo for addrinfo in addresses
+                    if addrinfo[0] == socket.AF_INET6]
+                if filtered_addresses:
+                    addresses = filtered_addresses
+
+        for family, sock_type, proto, canonname, sockaddr in addresses:
+
             sock = None
             try:
                 logging.debug('family=%s type=%s proto=%s addr=%s',
@@ -125,11 +147,15 @@ class Daemon:
                 sock = socket.socket(
                     family=family, type=sock_type, proto=proto)
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+
+                # Disable dual-stack support if the user requested
+                # IPv6 and not IPv4.
                 if (hasattr(socket, 'AF_INET6') and
                     hasattr(socket, 'IPV6_V6ONLY') and
-                    family == socket.AF_INET6):
-                    # Avoid EADDRINUSE with dual ipv4/ipv6 stack.
+                    family == socket.AF_INET6 and
+                    self._args.ipv6 and not self._args.ipv4):
                     sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
+
                 sock.bind(sockaddr)
                 sock.listen(self._args.backlog)
                 set_nonblock(sock.fileno())
