@@ -21,9 +21,9 @@ setting (mentioned in the
 
 ## Usage
 ```
-usage: socket-burst-dampener [-h] [--address ADDRESS] [--backlog BACKLOG]
-                             [--ipv4] [--ipv6] [--load-average LOAD]
-                             [--processes PROCESSES] [-v]
+usage: socket-burst-dampener [-h] [--address ADDRESS] [--ipv4] [--ipv6]
+                             [--load-average LOAD] [--processes PROCESSES]
+                             [-v]
                              PORT CMD [ARG [ARG ...]]
 
   socket-burst-dampener
@@ -37,8 +37,6 @@ positional arguments:
 optional arguments:
   -h, --help            show this help message and exit
   --address ADDRESS     bind to the specified address
-  --backlog BACKLOG     maximum number of queued connections (default from
-                        net.core.somaxconn sysctl is 128)
   --ipv4                prefer IPv4
   --ipv6                prefer IPv6
   --load-average LOAD   don't accept multiple connections unless load is below

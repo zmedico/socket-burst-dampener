@@ -220,11 +220,8 @@ def main():
         '--backlog',
         action='store',
         metavar='BACKLOG',
-        type=int,
-        default=max_backlog,
-        help=('maximum number of queued connections '
-            '(default from net.core.somaxconn '
-            'sysctl is {})'.format(max_backlog)),
+        default=None,
+        help=argparse.SUPPRESS,
     )
 
     parser.add_argument(
@@ -291,6 +288,10 @@ def main():
 
     if args.ipv6 and not socket.has_ipv6:
         logging.warning('the platform has IPv6 support disabled')
+
+    if args.backlog is not None:
+        logging.warning('the --backlog option is deprecated and ignored')
+    args.backlog = max_backlog
 
     loop = asyncio.get_event_loop()
 
