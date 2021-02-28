@@ -24,4 +24,5 @@ setup(
     entry_points={
         'console_scripts': 'socket-burst-dampener = socket_burst_dampener:main',
     },
+    python_requires = ">=3.6",
 )
