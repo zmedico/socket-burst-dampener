@@ -9,6 +9,7 @@ import signal
 import socket
 import subprocess
 import sys
+import types
 
 __version__ = "HEAD"
 __project__ = "socket-burst-dampener"
@@ -31,6 +32,7 @@ class Daemon:
         self._processes = {}
         self._accepting = False
         self._sockets = None
+        self._addr_info = None
         self._sigchld_handler = functools.partial(
             loop.call_soon_threadsafe, self._reap_children)
 
@@ -155,6 +157,12 @@ class Daemon:
                     sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
 
                 sock.bind(sockaddr)
+                self._addr_info = types.SimpleNamespace(
+                    address=sock.getsockname(),
+                    family=family,
+                    proto=proto,
+                    sock_type=sock_type,
+                )
                 sock.listen(self._args.backlog)
                 set_nonblock(sock.fileno())
             except Exception as e:
@@ -166,6 +174,10 @@ class Daemon:
 
         if not sockets:
             raise AssertionError('could not bind socket(s)')
+
+    @property
+    def addr_info(self):
+        return self._addr_info
 
     def __enter__(self):
         self._init_sockets()
