@@ -187,9 +187,12 @@ class Daemon:
         return False
 
 
-def main():
+def parse_args(argv=None):
+    if argv is None:
+        argv = sys.argv
 
     parser = argparse.ArgumentParser(
+        prog=os.path.basename(argv[0]),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description="  {} {}\n  {}".format(
         __project__, __version__, __description__))
@@ -277,7 +280,7 @@ def main():
         help='argument(s) for CMD',
     )
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv[1:])
 
     logging.basicConfig(
         level=(logging.getLogger().getEffectiveLevel() - 10 * args.verbosity),
@@ -292,7 +295,11 @@ def main():
     if args.backlog is not None:
         logging.warning('the --backlog option is deprecated and ignored')
     args.backlog = max_backlog
+    return args
 
+
+def main():
+    args = parse_args()
     loop = asyncio.get_event_loop()
 
     try:
@@ -302,6 +309,7 @@ def main():
         loop.stop()
     finally:
         loop.close()
+
 
 if __name__ == '__main__':
     sys.exit(main())
