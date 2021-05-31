@@ -56,3 +56,7 @@ class SocketBurstDampenerTest(unittest.TestCase):
             self.assertEqual(data, expect)
             writer.close()
             await writer.wait_closed()
+
+
+if __name__ == "__main__":
+	unittest.main(verbosity=2)

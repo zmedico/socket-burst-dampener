@@ -1,5 +1,6 @@
 
 import os
+import shutil
 import subprocess
 import sys
 
@@ -38,12 +39,22 @@ class PyTest(Command):
         pythonpath = list(filter(None, os.environ.get("PYTHONPATH", "").split(":")))
         pythonpath.insert(0, os.path.join(os.path.abspath(os.path.dirname(testpath)), "src"))
         os.environ["PYTHONPATH"] = ":".join(pythonpath)
-        pytest_cmd = (
-            ["py.test", "-v", testpath, "--cov-report=xml", "--cov-report=term-missing"]
-            + (["-k", self.match] if self.match else [])
-            + ["--cov=socket_burst_dampener"]
-        )
-        subprocess.check_call(pytest_cmd)
+        pytest_exe = shutil.which("py.test")
+        if pytest_exe is not None:
+            test_cmd = (
+                [
+                    pytest_exe,
+                    "-v",
+                    testpath,
+                    "--cov-report=xml",
+                    "--cov-report=term-missing",
+                ]
+                + (["-k", self.match] if self.match else [])
+                + ["--cov=socket_burst_dampener"]
+            )
+        else:
+            test_cmd = ["python", "test/test_socket_burst_dampener.py"]
+        subprocess.check_call(test_cmd)
 
 
 setup(
