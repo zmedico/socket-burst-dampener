@@ -4,7 +4,6 @@ import asyncio
 import functools
 import logging
 import os
-import signal
 import socket
 import subprocess
 import sys
@@ -27,8 +26,8 @@ class Daemon:
         self._accepting = False
         self._sockets = None
         self._addr_info = None
-        self._sigchld_handler = functools.partial(
-            loop.call_soon_threadsafe, self._reap_children)
+        self._child_handler_threadsafe = functools.partial(
+            loop.call_soon_threadsafe, self._child_handler)
 
     def _acceptable_load(self):
         return (self._args.load_average is None or
@@ -47,24 +46,15 @@ class Daemon:
             for sock in self._sockets:
                 self._loop.remove_reader(sock.fileno())
 
-    def _reap_children(self):
-        while True:
-            try:
-                pid, wstatus, rusage = os.wait3(os.WNOHANG)
-            except ChildProcessError:
-                break
+    def _child_handler(self, pid, status):
+        proc = self._processes.pop(pid)
 
-            if pid == 0:
-                break
+        # Suppress warning messages like this:
+        # ResourceWarning: subprocess 1234 is still running
+        proc.returncode = status
 
-            proc = self._processes.pop(pid)
-
-            # Suppress warning messages like this:
-            # ResourceWarning: subprocess 1234 is still running
-            proc.returncode = wstatus
-
-            if not self._accepting and self._acceptable_load():
-                self._start_accepting()
+        if not self._accepting and self._acceptable_load():
+            self._start_accepting()
 
     def _socket_read_handler(self, sock):
         if self._accepting:
@@ -80,6 +70,9 @@ class Daemon:
                     # descriptors (the subprocess holds a duplicate).
                     conn.close()
                     self._processes[proc.pid] = proc
+                    asyncio.get_child_watcher().add_child_handler(
+                        proc.pid, self._child_handler_threadsafe
+                    )
                     if len(self._processes) == self._args.processes:
                         self._stop_accepting()
             else:
@@ -174,7 +167,6 @@ class Daemon:
 
     def __enter__(self):
         self._init_sockets()
-        self._loop.add_signal_handler(signal.SIGCHLD, self._sigchld_handler)
         self._start_accepting()
         return self
 
@@ -182,7 +174,6 @@ class Daemon:
         self._stop_accepting()
         while self._sockets:
             self._sockets.pop().close()
-        self._loop.remove_signal_handler(signal.SIGCHLD)
 
         while self._processes:
             pid, proc = self._processes.popitem()
