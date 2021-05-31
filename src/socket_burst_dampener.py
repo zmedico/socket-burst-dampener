@@ -1,7 +1,6 @@
 
 import argparse
 import asyncio
-import fcntl
 import functools
 import logging
 import os
@@ -18,11 +17,6 @@ __author__ = "Zac Medico"
 __email__ = "<zmedico@gmail.com>"
 __copyright__ = "Copyright 2016 Zac Medico"
 __license__ = "Apache-2.0"
-
-
-def set_nonblock(fd):
-    fcntl.fcntl(fd, fcntl.F_SETFL,
-        fcntl.fcntl(fd, fcntl.F_GETFL) | os.O_NONBLOCK)
 
 
 class Daemon:
@@ -145,7 +139,7 @@ class Daemon:
                 logging.debug('family=%s type=%s proto=%s addr=%s',
                     family, sock_type, proto, sockaddr)
                 sock = socket.socket(
-                    family=family, type=sock_type, proto=proto)
+                    family=family, type=sock_type|getattr(socket, 'SOCK_NONBLOCK', 0), proto=proto)
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
                 # Disable dual-stack support if the user requested
@@ -164,7 +158,6 @@ class Daemon:
                     sock_type=sock_type,
                 )
                 sock.listen(self._args.backlog)
-                set_nonblock(sock.fileno())
             except Exception as e:
                 logging.exception(e)
                 if sock is not None:
