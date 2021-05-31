@@ -1,7 +1,17 @@
 import asyncio
+import os
+import sys
 import unittest
 
-from socket_burst_dampener import Daemon, parse_args
+try:
+    from socket_burst_dampener import Daemon, parse_args
+except ImportError:
+    sys.path.append(
+        os.path.join(
+            os.path.dirname(os.path.dirname(os.path.realpath(__file__))), "src"
+        )
+    )
+    from socket_burst_dampener import Daemon, parse_args
 
 
 class SocketBurstDampenerTest(unittest.TestCase):
