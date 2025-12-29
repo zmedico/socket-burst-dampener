@@ -16,6 +16,9 @@ except ImportError:
 
 class SocketBurstDampenerTest(unittest.TestCase):
     def test_socket_burst_dampener(self):
+        asyncio.run(self._test_socket_burst_dampener())
+
+    async def _test_socket_burst_dampener(self):
         args = parse_args(
             [
                 "socket-burst-dampener",
@@ -29,15 +32,10 @@ class SocketBurstDampenerTest(unittest.TestCase):
                 "hello",
             ]
         )
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
-        try:
-            with Daemon(args, loop) as daemon:
-                loop.run_until_complete(self._test_daemon(loop, daemon))
-        except KeyboardInterrupt:
-            loop.stop()
-        finally:
-            loop.close()
+        with Daemon(args, loop) as daemon:
+            await self._test_daemon(loop, daemon)
 
     async def _test_daemon(self, loop, daemon):
         while daemon.addr_info is None:

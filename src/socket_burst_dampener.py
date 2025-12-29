@@ -4,6 +4,7 @@ import asyncio
 import functools
 import logging
 import os
+import signal
 import socket
 import subprocess
 import sys
@@ -294,18 +295,23 @@ def parse_args(argv=None):
     return args
 
 
-def main():
+def sigterm_handler(loop, task, signum, _frame):
+    loop.call_soon_threadsafe(task.cancel)
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+
+
+async def main():
     args = parse_args()
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
+    task = loop.create_future()
 
-    try:
-        with Daemon(args, loop):
-            loop.run_forever()
-    except KeyboardInterrupt:
-        loop.stop()
-    finally:
-        loop.close()
+    signal.signal(signal.SIGINT, functools.partial(sigterm_handler, loop, task))
+    with Daemon(args, loop):
+        try:
+            await task
+        except asyncio.CancelledError:
+            print("interrupted.", file=sys.stderr)
 
 
-if __name__ == '__main__':
-    sys.exit(main())
+if __name__ == "__main__":
+    asyncio.run(main())
