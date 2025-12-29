@@ -1,4 +1,3 @@
-
 import argparse
 import asyncio
 import functools
@@ -28,18 +27,22 @@ class Daemon:
         self._sockets = None
         self._addr_info = None
         self._child_handler_threadsafe = functools.partial(
-            loop.call_soon_threadsafe, self._child_handler)
+            loop.call_soon_threadsafe, self._child_handler
+        )
 
     def _acceptable_load(self):
-        return (self._args.load_average is None or
-            not self._processes or
-            os.getloadavg()[0] < self._args.load_average)
+        return (
+            self._args.load_average is None
+            or not self._processes
+            or os.getloadavg()[0] < self._args.load_average
+        )
 
     def _start_accepting(self):
         self._accepting = True
         for sock in self._sockets:
-            self._loop.add_reader(sock.fileno(),
-                functools.partial(self._socket_read_handler, sock))
+            self._loop.add_reader(
+                sock.fileno(), functools.partial(self._socket_read_handler, sock)
+            )
 
     def _stop_accepting(self):
         if self._accepting:
@@ -63,10 +66,13 @@ class Daemon:
                 try:
                     conn, addr = sock.accept()
                 except Exception as e:
-                    logging.debug('socket.accept: %s', e)
+                    logging.debug("socket.accept: %s", e)
                 else:
-                    proc = subprocess.Popen([self._args.cmd] + self._args.args,
-                        stdin=conn.fileno(), stdout=conn.fileno())
+                    proc = subprocess.Popen(
+                        [self._args.cmd] + self._args.args,
+                        stdin=conn.fileno(),
+                        stdout=conn.fileno(),
+                    )
                     # Close the socket immediately, in order to conserve file
                     # descriptors (the subprocess holds a duplicate).
                     conn.close()
@@ -93,9 +99,13 @@ class Daemon:
         addresses = []
 
         for addrinfo in socket.getaddrinfo(
-            self._args.address, self._args.port,
-            family=af_hint, type=socket.SOCK_STREAM,
-            proto=socket.IPPROTO_TCP, flags=socket.AI_PASSIVE):
+            self._args.address,
+            self._args.port,
+            family=af_hint,
+            type=socket.SOCK_STREAM,
+            proto=socket.IPPROTO_TCP,
+            flags=socket.AI_PASSIVE,
+        ):
 
             # Validate structures returned from getaddrinfo(),
             # since they may be corrupt (especially if python
@@ -115,14 +125,15 @@ class Daemon:
         # listen on both addresses separately results in EADDRINUSE.
         if len(addresses) > 1 and socket.has_ipv6:
             try:
-                with open('/proc/sys/net/ipv6/bindv6only', 'rb') as f:
-                    ipv6_bindv6only = b'0' not in f.readline()
+                with open("/proc/sys/net/ipv6/bindv6only", "rb") as f:
+                    ipv6_bindv6only = b"0" not in f.readline()
             except EnvironmentError:
                 ipv6_bindv6only = True
 
             if not ipv6_bindv6only:
-                filtered_addresses = [addrinfo for addrinfo in addresses
-                    if addrinfo[0] == socket.AF_INET6]
+                filtered_addresses = [
+                    addrinfo for addrinfo in addresses if addrinfo[0] == socket.AF_INET6
+                ]
                 if filtered_addresses:
                     addresses = filtered_addresses
 
@@ -130,18 +141,29 @@ class Daemon:
 
             sock = None
             try:
-                logging.debug('family=%s type=%s proto=%s addr=%s',
-                    family, sock_type, proto, sockaddr)
+                logging.debug(
+                    "family=%s type=%s proto=%s addr=%s",
+                    family,
+                    sock_type,
+                    proto,
+                    sockaddr,
+                )
                 sock = socket.socket(
-                    family=family, type=sock_type|getattr(socket, 'SOCK_NONBLOCK', 0), proto=proto)
+                    family=family,
+                    type=sock_type | getattr(socket, "SOCK_NONBLOCK", 0),
+                    proto=proto,
+                )
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
                 # Disable dual-stack support if the user requested
                 # IPv6 and not IPv4.
-                if (hasattr(socket, 'AF_INET6') and
-                    hasattr(socket, 'IPV6_V6ONLY') and
-                    family == socket.AF_INET6 and
-                    self._args.ipv6 and not self._args.ipv4):
+                if (
+                    hasattr(socket, "AF_INET6")
+                    and hasattr(socket, "IPV6_V6ONLY")
+                    and family == socket.AF_INET6
+                    and self._args.ipv6
+                    and not self._args.ipv4
+                ):
                     sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
 
                 sock.bind(sockaddr)
@@ -160,7 +182,7 @@ class Daemon:
             sockets.append(sock)
 
         if not sockets:
-            raise AssertionError('could not bind socket(s)')
+            raise AssertionError("could not bind socket(s)")
 
     @property
     def addr_info(self):
@@ -191,106 +213,107 @@ def parse_args(argv=None):
     parser = argparse.ArgumentParser(
         prog=os.path.basename(argv[0]),
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        description="  {} {}\n  {}".format(
-        __project__, __version__, __description__))
+        description="  {} {}\n  {}".format(__project__, __version__, __description__),
+    )
 
     try:
-        with open('/proc/sys/net/core/somaxconn', 'rt') as f:
+        with open("/proc/sys/net/core/somaxconn", "rt") as f:
             max_backlog = int(f.readline().strip())
     except Exception:
         max_backlog = socket.SOMAXCONN
 
     parser.add_argument(
-        'port',
-        action='store',
-        metavar='PORT',
+        "port",
+        action="store",
+        metavar="PORT",
         type=int,
-        help='listen on the given port number',
+        help="listen on the given port number",
     )
 
     parser.add_argument(
-        '--address',
-        action='store',
-        metavar='ADDRESS',
+        "--address",
+        action="store",
+        metavar="ADDRESS",
         default=None,
-        help='bind to the specified address',
+        help="bind to the specified address",
     )
 
     parser.add_argument(
-        '--backlog',
-        action='store',
-        metavar='BACKLOG',
+        "--backlog",
+        action="store",
+        metavar="BACKLOG",
         default=None,
         help=argparse.SUPPRESS,
     )
 
     parser.add_argument(
-        '--ipv4',
-        action='store_true',
+        "--ipv4",
+        action="store_true",
         default=None,
-        help='prefer IPv4',
+        help="prefer IPv4",
     )
 
     parser.add_argument(
-        '--ipv6',
-        action='store_true',
+        "--ipv6",
+        action="store_true",
         default=None,
-        help='prefer IPv6',
+        help="prefer IPv6",
     )
 
     parser.add_argument(
-        '--load-average',
-        action='store',
-        metavar='LOAD',
+        "--load-average",
+        action="store",
+        metavar="LOAD",
         type=float,
         default=None,
-        help='don\'t accept multiple connections unless load is below LOAD',
+        help="don't accept multiple connections unless load is below LOAD",
     )
 
     parser.add_argument(
-        '--processes',
-        action='store',
-        metavar='PROCESSES',
+        "--processes",
+        action="store",
+        metavar="PROCESSES",
         type=int,
         default=1,
-        help='maximum number of concurrent processes (0 means infinite, default is 1)',
+        help="maximum number of concurrent processes (0 means infinite, default is 1)",
     )
 
     parser.add_argument(
-        '-v', '--verbose',
-        dest='verbosity',
-        action='count',
-        help='verbose logging (each occurence increases verbosity)',
+        "-v",
+        "--verbose",
+        dest="verbosity",
+        action="count",
+        help="verbose logging (each occurence increases verbosity)",
         default=0,
     )
 
     parser.add_argument(
-        'cmd',
-        metavar='CMD',
-        help='command to spawn to handle each connection',
+        "cmd",
+        metavar="CMD",
+        help="command to spawn to handle each connection",
     )
 
     parser.add_argument(
-        'args',
-        nargs='*',
-        metavar='ARG',
-        help='argument(s) for CMD',
+        "args",
+        nargs="*",
+        metavar="ARG",
+        help="argument(s) for CMD",
     )
 
     args = parser.parse_args(argv[1:])
 
     logging.basicConfig(
         level=(logging.getLogger().getEffectiveLevel() - 10 * args.verbosity),
-        format='[%(levelname)-4s] %(message)s',
+        format="[%(levelname)-4s] %(message)s",
     )
 
-    logging.debug('args: %s', args)
+    logging.debug("args: %s", args)
 
     if args.ipv6 and not socket.has_ipv6:
-        logging.warning('the platform has IPv6 support disabled')
+        logging.warning("the platform has IPv6 support disabled")
 
     if args.backlog is not None:
-        logging.warning('the --backlog option is deprecated and ignored')
+        logging.warning("the --backlog option is deprecated and ignored")
     args.backlog = max_backlog
     return args
 
