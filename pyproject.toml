@@ -1,6 +1,6 @@
 [project]
 name = "socket-burst-dampener"
-version = "1.3.2"
+version = "1.3.3"
 authors = [
   { name="Zac Medico", email="zmedico@gmail.com" },
 ]
@@ -12,6 +12,9 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",
 ]
+
+[project.scripts]
+socket-burst-dampener = "socket_burst_dampener:main_entry_point"
 
 [project.urls]
 "Homepage" = "https://github.com/zmedico/socket-burst-dampener"

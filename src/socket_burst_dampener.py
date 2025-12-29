@@ -313,5 +313,9 @@ async def main():
             print("interrupted.", file=sys.stderr)
 
 
-if __name__ == "__main__":
+def main_entry_point():
     asyncio.run(main())
+
+
+if __name__ == "__main__":
+    main_entry_point()
