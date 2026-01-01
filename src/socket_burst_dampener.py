@@ -11,6 +11,16 @@ import types
 
 from typing import Optional
 
+try:
+    from asyncio.unix_events import _ThreadedChildWatcher as ThreadedChildWatcher
+except ImportError:
+    from asyncio.unix_events import ThreadedChildWatcher
+
+try:
+    from asyncio.unix_events import _PidfdChildWatcher as PidfdChildWatcher
+except ImportError:
+    from asyncio.unix_events import PidfdChildWatcher
+
 __version__ = "HEAD"
 __project__ = "socket-burst-dampener"
 __description__ = "A daemon that spawns a specified command to handle each connection, and dampens connection bursts"
@@ -28,6 +38,7 @@ class Daemon:
         self._accepting = False
         self._sockets = None
         self._addr_info = None
+        self._child_watcher = None
         self._child_handler_threadsafe = functools.partial(
             loop.call_soon_threadsafe, self._child_handler
         )
@@ -62,6 +73,32 @@ class Daemon:
         if not self._accepting and self._acceptable_load():
             self._start_accepting()
 
+    @property
+    def _asyncio_child_watcher(self):
+
+        if self._child_watcher is None:
+            pidfd_works = False
+            if hasattr(os, "pidfd_open"):
+                try:
+                    fd = os.pidfd_open(os.getpid())
+                except Exception:
+                    pass
+                else:
+                    os.close(fd)
+                    pidfd_works = True
+
+            if pidfd_works:
+                watcher = PidfdChildWatcher()
+            else:
+                watcher = ThreadedChildWatcher()
+
+            if hasattr(watcher, "attach_loop"):
+                watcher.attach_loop(self._loop)
+
+            self._child_watcher = watcher
+
+        return self._child_watcher
+
     def _socket_read_handler(self, sock: socket.socket):
         if self._accepting:
             if self._acceptable_load():
@@ -79,7 +116,7 @@ class Daemon:
                     # descriptors (the subprocess holds a duplicate).
                     conn.close()
                     self._processes[proc.pid] = proc
-                    asyncio.get_child_watcher().add_child_handler(
+                    self._asyncio_child_watcher.add_child_handler(
                         proc.pid, self._child_handler_threadsafe
                     )
                     if len(self._processes) == self._args.processes:
