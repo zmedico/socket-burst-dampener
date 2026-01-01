@@ -35,9 +35,9 @@ class SocketBurstDampenerTest(unittest.TestCase):
         loop = asyncio.get_running_loop()
 
         with Daemon(args, loop) as daemon:
-            await self._test_daemon(loop, daemon)
+            await self._test_daemon(daemon)
 
-    async def _test_daemon(self, loop, daemon):
+    async def _test_daemon(self, daemon: Daemon):
         while daemon.addr_info is None:
             await asyncio.sleep(0.1)
 

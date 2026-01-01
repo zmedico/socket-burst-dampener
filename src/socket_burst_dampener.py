@@ -9,6 +9,8 @@ import subprocess
 import sys
 import types
 
+from typing import Optional
+
 __version__ = "HEAD"
 __project__ = "socket-burst-dampener"
 __description__ = "A daemon that spawns a specified command to handle each connection, and dampens connection bursts"
@@ -19,7 +21,7 @@ __license__ = "Apache-2.0"
 
 
 class Daemon:
-    def __init__(self, args, loop):
+    def __init__(self, args: argparse.Namespace, loop: asyncio.AbstractEventLoop):
         self._args = args
         self._loop = loop
         self._processes = {}
@@ -50,7 +52,7 @@ class Daemon:
             for sock in self._sockets:
                 self._loop.remove_reader(sock.fileno())
 
-    def _child_handler(self, pid, status):
+    def _child_handler(self, pid: int, status: int):
         proc = self._processes.pop(pid)
 
         # Suppress warning messages like this:
@@ -60,7 +62,7 @@ class Daemon:
         if not self._accepting and self._acceptable_load():
             self._start_accepting()
 
-    def _socket_read_handler(self, sock):
+    def _socket_read_handler(self, sock: socket.socket):
         if self._accepting:
             if self._acceptable_load():
                 try:
@@ -206,7 +208,7 @@ class Daemon:
         return False
 
 
-def parse_args(argv=None):
+def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     if argv is None:
         argv = sys.argv
 
@@ -323,8 +325,8 @@ def sigterm_handler(loop, task, signum, _frame):
     signal.signal(signal.SIGINT, signal.SIG_IGN)
 
 
-async def main():
-    args = parse_args()
+async def main(argv: Optional[list[str]] = None) -> int:
+    args = parse_args(argv=argv)
     loop = asyncio.get_running_loop()
     task = loop.create_future()
 
@@ -334,11 +336,15 @@ async def main():
             await task
         except asyncio.CancelledError:
             print("interrupted.", file=sys.stderr)
+            signal.signal(signal.SIGINT, signal.SIG_DFL)
+            signal.raise_signal(signal.SIGINT)
+
+    return 0
 
 
-def main_entry_point():
-    asyncio.run(main())
+def main_entry_point(argv: Optional[list[str]] = None):
+    return asyncio.run(main(argv=argv))
 
 
 if __name__ == "__main__":
-    main_entry_point()
+    main_entry_point(argv=sys.argv)
